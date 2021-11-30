@@ -19,9 +19,13 @@ class CSDE:
         # Create a configuration object
         self.configuration = client.Configuration()
 
+        K8S_IP_MASTER = "127.0.0.1"
+        K8S_PORT = "6443"
         # Specify the endpoint of your Kube cluster
-        K8S_IP_MASTER = os.getenv('IP_MASTER')
-        K8S_PORT = os.getenv('PORT')
+        if os.getenv('IP_MASTER') not None and os.getenv('PORT') not None:
+            K8S_IP_MASTER = os.getenv('IP_MASTER')
+            K8S_PORT = os.getenv('PORT')
+
         host = "https://" + str(K8S_IP_MASTER) + ":" + str(K8S_PORT)
         self.configuration.host = host
         self.configuration.proxy = None
@@ -95,17 +99,14 @@ class CSDE:
         for svc in list_svc:
             custom_endpoint = client.V1Endpoints()
             custom_endpoint.metadata = client.V1ObjectMeta(name=svc[1], namespace=svc[0])
+            custom_subset = client.V1EndpointSubset()                
+            custom_subset.ports = []
+            custom_subset.addresses = []
 
-            if any(svc[1] in pod for pod in list_pods):  # csde-abm in csde-abm-tcp :error
-
-                custom_subset = client.V1EndpointSubset()
-                custom_subset.ports = []
-                custom_subset.addresses = []
-
-                for pod in list_pods:
-
-                    # assign net
+            for pod in list_pods:
+                if svc[0] == pod[0].namespace:
                     if svc[1] == pod[2]:  # kiem tra_pod thuoc ve svc nao thong qua name svc
+                        #filter_IP
                         pod[3] = pod[3].replace("-", "")
                         regex_ipv4 = pod[3] + '''\"\,\n\s*\"ips\"\:\s*\[\n\s*\"([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)'''
                         item = re.findall(regex_ipv4, pod[0].annotations["k8s.v1.cni.cncf.io/networks-status"])
@@ -118,6 +119,7 @@ class CSDE:
                         custom_ref.resource_version = pod[0].resource_version
                         custom_ref.uid = pod[0].uid
 
+                        # assign net
                         for ip in item:
                             custom_address = client.V1EndpointAddress(ip=ip, node_name=pod[1], target_ref=custom_ref)
                             custom_subset.addresses.append(custom_address)
@@ -127,8 +129,8 @@ class CSDE:
                             custom_port = client.V1EndpointPort(ports.name, ports.port, ports.protocol)
                             custom_subset.ports.append(custom_port)
 
-                # assign subnet
-                custom_endpoint.subsets = [custom_subset]
+            # assign subnet
+            custom_endpoint.subsets = [custom_subset]
 
             # print("----------------\n" + str(custom_endpoint))
 
